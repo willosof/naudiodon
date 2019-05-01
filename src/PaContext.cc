@@ -68,6 +68,9 @@ PaContext::PaContext(Napi::Env env, Napi::Object inOptions, Napi::Object outOpti
     setParams(env, /*isInput*/false, mOutOptions, outParams, sampleRate);
 
   uint32_t framesPerBuffer = paFramesPerBufferUnspecified;
+  #ifdef __arm__
+  framesPerBuffer = 256;
+  #endif
 
   errCode = Pa_OpenStream(&mStream,
                           mInOptions ? &inParams : NULL,
@@ -234,8 +237,7 @@ void PaContext::setParams(Napi::Env env, bool isInput,
   sampleRate = (double)options->sampleRate();
 
   #ifdef __arm__
-  framesPerBuffer = 256;
-  params.suggestedLatency = isInput ? Pa_GetDeviceInfo(params.device)->defaultHighOutputLatency : 
+  params.suggestedLatency = isInput ? Pa_GetDeviceInfo(params.device)->defaultHighInputLatency : 
                                       Pa_GetDeviceInfo(params.device)->defaultHighOutputLatency;
   #endif
 }
