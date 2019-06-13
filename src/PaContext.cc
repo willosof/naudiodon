@@ -72,6 +72,12 @@ PaContext::PaContext(Napi::Env env, Napi::Object inOptions, Napi::Object outOpti
   framesPerBuffer = 256;
   #endif
 
+  errCode = Pa_IsFormatSupported(mInOptions ? &inParams : NULL, mOutOptions ? &outParams : NULL, sampleRate);
+  if (errCode != paFormatIsSupported) {
+    std::string err = std::string("Format not supported: ") + Pa_GetErrorText(errCode);
+    throw Napi::Error::New(env, err.c_str());
+  }
+
   errCode = Pa_OpenStream(&mStream,
                           mInOptions ? &inParams : NULL,
                           mOutOptions ? &outParams : NULL,
@@ -161,7 +167,7 @@ void PaContext::quit() {
 }
 
 bool PaContext::readPaBuffer(const void *srcBuf, uint32_t frameCount) {
-  uint32_t bytesAvailable = frameCount * mInOptions->channelCount() * mInOptions->sampleFormat() / 8;
+  uint32_t bytesAvailable = frameCount * mInOptions->channelCount() * mInOptions->sampleBits() / 8;
   std::shared_ptr<Memory> chunk = Memory::makeNew(bytesAvailable);
   memcpy(chunk->buf(), srcBuf, bytesAvailable);
   mInChunks->push(std::make_shared<Chunk>(chunk));
@@ -169,7 +175,7 @@ bool PaContext::readPaBuffer(const void *srcBuf, uint32_t frameCount) {
 }
 
 bool PaContext::fillPaBuffer(void *dstBuf, uint32_t frameCount) {
-  uint32_t bytesRemaining = frameCount * mOutOptions->channelCount() * mOutOptions->sampleFormat() / 8;
+  uint32_t bytesRemaining = frameCount * mOutOptions->channelCount() * mOutOptions->sampleBits() / 8;
   bool finished = false;
   fillBuffer((uint8_t *)dstBuf, bytesRemaining, mOutChunks, finished);
   return !finished;
@@ -223,6 +229,7 @@ void PaContext::setParams(Napi::Env env, bool isInput,
 
   uint32_t sampleFormat = options->sampleFormat();
   switch(sampleFormat) {
+  case 1: params.sampleFormat = paFloat32; break;
   case 8: params.sampleFormat = paInt8; break;
   case 16: params.sampleFormat = paInt16; break;
   case 24: params.sampleFormat = paInt24; break;

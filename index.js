@@ -19,6 +19,7 @@ const portAudioBindings = require("bindings")("naudiodon.node");
 var SegfaultHandler = require('segfault-handler');
 SegfaultHandler.registerHandler("crash.log");
 
+exports.SampleFormatFloat32 = 1;
 exports.SampleFormat8Bit = 8;
 exports.SampleFormat16Bit = 16;
 exports.SampleFormat24Bit = 24;
@@ -79,9 +80,9 @@ function AudioIO(options) {
   ioStream.start = () => audioIOAdon.start();
 
   ioStream.quit = cb => {
-  audioIOAdon.quit('WAIT', () => {
-    if (typeof cb === 'function')
-      cb();
+    audioIOAdon.quit('WAIT', () => {
+      if (typeof cb === 'function')
+        cb();
     });
   }
 
