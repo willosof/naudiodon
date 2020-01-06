@@ -36,9 +36,10 @@ function AudioIO(options) {
     audioIOAdon.read(size, (err, buf) => {
       if (err)
         process.nextTick(() => ioStream.emit('error', err));
-        ioStream.push(buf);
+
+      ioStream.push(buf);
       if (buf && buf.length < size)
-      ioStream.push(null);
+        ioStream.push(null);
     });
   };
 
