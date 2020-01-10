@@ -112,10 +112,10 @@ void PaContext::stop(eStopFlag flag) {
   Pa_Terminate();
 }
 
-std::shared_ptr<Chunk> PaContext::pullInChunk(uint32_t numBytes) {
+std::shared_ptr<Chunk> PaContext::pullInChunk(uint32_t numBytes, bool &finished) {
   std::shared_ptr<Memory> result = Memory::makeNew(numBytes);
-  bool finished = false;
-  uint32_t bytesRead = fillBuffer(result->buf(), numBytes, mInChunks, finished);
+  finished = false;
+  uint32_t bytesRead = fillBuffer(result->buf(), numBytes, mInChunks, finished, /*isInput*/true);
   if (bytesRead != numBytes) {
     if (0 == bytesRead)
       result = std::shared_ptr<Memory>();
@@ -152,9 +152,13 @@ void PaContext::checkStatus(uint32_t statusFlags) {
   }
 }
 
-bool PaContext::getErrStr(std::string& errStr) {
+bool PaContext::getErrStr(std::string& errStr, bool isInput) {
   std::lock_guard<std::mutex> lk(m);
-  errStr = mErrStr;
+  std::shared_ptr<streampunk::AudioOptions> options = isInput ? mInOptions : mOutOptions;
+  if (options->closeOnError()) // propagate the error back to the stream handler
+    errStr = mErrStr;
+  else if (mErrStr.length())
+    printf("AudioIO: %s\n", mErrStr.c_str());
   mErrStr.clear();
   return !errStr.empty();
 }
@@ -177,20 +181,20 @@ bool PaContext::readPaBuffer(const void *srcBuf, uint32_t frameCount) {
 bool PaContext::fillPaBuffer(void *dstBuf, uint32_t frameCount) {
   uint32_t bytesRemaining = frameCount * mOutOptions->channelCount() * mOutOptions->sampleBits() / 8;
   bool finished = false;
-  fillBuffer((uint8_t *)dstBuf, bytesRemaining, mOutChunks, finished);
+  fillBuffer((uint8_t *)dstBuf, bytesRemaining, mOutChunks, finished, /*isInput*/false);
   return !finished;
 }
 
 // private
 uint32_t PaContext::fillBuffer(uint8_t *buf, uint32_t numBytes,
                                std::shared_ptr<Chunks> chunks,
-                               bool &finished) {
+                               bool &finished, bool isInput) {
   uint32_t bufOff = 0;
   while (numBytes) {
     if (!chunks->curBuf() || (chunks->curBuf() && (chunks->curBytes() == chunks->curOffset()))) {
       chunks->waitNext();
       if (!chunks->curBuf()) {
-        printf("Finishing - %d bytes not available to fill the last buffer\n", numBytes);
+        printf("Finishing %s - %d bytes not available to fill the last buffer\n", isInput ? "input" : "output", numBytes);
         memset(buf + bufOff, 0, numBytes);
         finished = true;
         break;

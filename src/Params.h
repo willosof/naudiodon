@@ -73,7 +73,8 @@ public:
       mChannelCount(unpackNum(env, tags, "channelCount", 2)),
       mSampleFormat(unpackNum(env, tags, "sampleFormat", 8)),
       mSampleBits(1 == mSampleFormat ? 32 : mSampleFormat),
-      mMaxQueue(unpackNum(env, tags, "maxQueue", 2))
+      mMaxQueue(unpackNum(env, tags, "maxQueue", 2)),
+      mCloseOnError(unpackBool(env, tags, "closeOnError", true))
   {}
   ~AudioOptions() {}
 
@@ -83,6 +84,7 @@ public:
   uint32_t sampleFormat() const  { return mSampleFormat; }
   uint32_t sampleBits() const  { return mSampleBits; }
   uint32_t maxQueue() const  { return mMaxQueue; }
+  bool closeOnError() const  { return mCloseOnError; }
 
   std::string toString() const  { 
     std::stringstream ss;
@@ -94,7 +96,8 @@ public:
     ss << "sample rate " << mSampleRate << ", ";
     ss << "channels " << mChannelCount << ", ";
     ss << "bits per sample " << mSampleBits << ", ";
-    ss << "max queue " << mMaxQueue;
+    ss << "max queue " << mMaxQueue << ", ";
+    ss << "close on error " << (mCloseOnError ? "true" : "false");
     return ss.str();
   }
 
@@ -105,6 +108,7 @@ private:
   uint32_t mSampleFormat;
   uint32_t mSampleBits;
   uint32_t mMaxQueue;
+  bool mCloseOnError;
 };
 
 } // namespace streampunk

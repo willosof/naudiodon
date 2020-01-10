@@ -31,32 +31,36 @@ public:
 class ReadWorker : public Napi::AsyncWorker {
   public:
     ReadWorker(std::shared_ptr<PaContext> paContext, uint32_t numBytes, const Napi::Function& callback)
-      : AsyncWorker(callback, "AudioRead"), mPaContext(paContext), mNumBytes(numBytes)
+      : AsyncWorker(callback, "AudioRead"), mPaContext(paContext), mNumBytes(numBytes), mFinished(false)
     { }
     ~ReadWorker() {}
 
     void Execute() {
-      mChunk = mPaContext->pullInChunk(mNumBytes);
+      mChunk = mPaContext->pullInChunk(mNumBytes, mFinished);
     }
 
     void OnOK() {
       Napi::HandleScope scope(Env());
 
+      Napi::Value errVal = Env().Null();
+      Napi::Value bufVal = Env().Null();
       std::string errStr;
-      if (mPaContext->getErrStr(errStr))
-        Callback().Call({Napi::String::New(Env(), errStr), Napi::Buffer<uint8_t>::New(Env(),0)});
-      else if (mChunk) {
+      if (mPaContext->getErrStr(errStr, /*isInput*/true))
+        errVal = Napi::String::New(Env(), errStr);
+      if (mChunk && mChunk->numBytes()) {
         sOutstandingAllocs.emplace(mChunk->buf(), mChunk);
-        Napi::Object buf = Napi::Buffer<uint8_t>::New(Env(), mChunk->buf(), mChunk->numBytes(), sAllocFinalizer);
-        Callback().Call({Env().Null(), buf});
-      } else
-        Callback().Call({Env().Null(), Env().Null()});
+        bufVal = Napi::Buffer<uint8_t>::New(Env(), mChunk->buf(), mChunk->numBytes(), sAllocFinalizer);
+      }
+      Napi::Boolean finishedVal = Napi::Boolean::New(Env(), mFinished);
+
+      Callback().Call({errVal, bufVal, finishedVal});
     }
 
   private:
     std::shared_ptr<PaContext> mPaContext;
     uint32_t mNumBytes;
     std::shared_ptr<Chunk> mChunk;
+    bool mFinished;
 };
 
 class WriteWorker : public Napi::AsyncWorker {
@@ -73,7 +77,7 @@ class WriteWorker : public Napi::AsyncWorker {
     void OnOK() {
       Napi::HandleScope scope(Env());
       std::string errStr;
-      if (mPaContext->getErrStr(errStr))
+      if (mPaContext->getErrStr(errStr, /*isInput*/false))
         Callback().Call({Napi::String::New(Env(), errStr)});
       else
         Callback().Call({Env().Null()});

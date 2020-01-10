@@ -33,22 +33,19 @@ function AudioIO(options) {
   let ioStream;
 
   const doRead = size => {
-    audioIOAdon.read(size, (err, buf) => {
+    audioIOAdon.read(size, (err, buf, finished) => {
       if (err)
-        process.nextTick(() => ioStream.emit('error', err));
-
-      ioStream.push(buf);
-      if (buf && buf.length < size)
-        ioStream.push(null);
+        ioStream.destroy(err);
+      else {
+        ioStream.push(buf);
+        if (finished)
+          ioStream.push(null);
+      }
     });
   };
 
   const doWrite = (chunk, encoding, cb) => {
-    audioIOAdon.write(chunk, err => {
-      if (err)
-        process.nextTick(() => ioStream.emit('error', err));
-      cb();
-    });
+    audioIOAdon.write(chunk, err => cb(err));
   }
 
   const readable = 'inOptions' in options;
@@ -94,15 +91,9 @@ function AudioIO(options) {
     });
   }
 
-  ioStream.on('close', () => {
-    console.log('AudioIO close');
-    ioStream.quit();
-  });
-  ioStream.on('finish', () => {
-    console.log('AudioIO finish');
-    ioStream.quit();
-  });
-  ioStream.on('end', () => console.log('AudioIO end'));
+  ioStream.on('close', () => ioStream.quit());
+  ioStream.on('finish', () => ioStream.quit());
+
   ioStream.on('error', err => console.error('AudioIO:', err));
 
   return ioStream;

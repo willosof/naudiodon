@@ -41,11 +41,11 @@ public:
   void start(Napi::Env env);
   void stop(eStopFlag flag);
 
-  std::shared_ptr<Chunk> pullInChunk(uint32_t numBytes);
+  std::shared_ptr<Chunk> pullInChunk(uint32_t numBytes, bool &finished);
   void pushOutChunk(std::shared_ptr<Chunk> chunk);
 
   void checkStatus(uint32_t statusFlags);
-  bool getErrStr(std::string& errStr);
+  bool getErrStr(std::string& errStr, bool isInput);
 
   void quit();
 
@@ -63,7 +63,7 @@ private:
 
   uint32_t fillBuffer(uint8_t *buf, uint32_t numBytes,
                       std::shared_ptr<Chunks> chunks,
-                      bool &finished);
+                      bool &finished, bool isInput);
 
   void setParams(Napi::Env env, bool isInput, 
                  std::shared_ptr<AudioOptions> options, 

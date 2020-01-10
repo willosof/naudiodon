@@ -104,13 +104,14 @@ Playing audio involves streaming audio data to a new instance of `AudioIO` confi
 const fs = require('fs');
 const portAudio = require('naudiodon');
 
-// Create an instance of AudioIO with outOptions, which will return a WritableStream
+// Create an instance of AudioIO with outOptions (defaults are as below), which will return a WritableStream
 var ao = new portAudio.AudioIO({
   outOptions: {
     channelCount: 2,
     sampleFormat: portAudio.SampleFormat16Bit,
     sampleRate: 48000,
-    deviceId: -1 // Use -1 or omit the deviceId to select the default device
+    deviceId: -1, // Use -1 or omit the deviceId to select the default device
+    closeOnError: true // Close the stream if an audio error is detected, if set false then just log the error
   }
 });
 
@@ -131,13 +132,14 @@ Recording audio involves streaming audio data from a new instance of `AudioIO` c
 var fs = require('fs');
 var portAudio = require('../index.js');
 
-// Create an instance of AudioIO with inOptions, which will return a ReadableStream
+// Create an instance of AudioIO with inOptions (defaults are as below), which will return a ReadableStream
 var ai = new portAudio.AudioIO({
   inOptions: {
     channelCount: 2,
     sampleFormat: portAudio.SampleFormat16Bit,
     sampleRate: 44100,
-    deviceId: -1 // Use -1 or omit the deviceId to select the default device
+    deviceId: -1, // Use -1 or omit the deviceId to select the default device
+    closeOnError: true // Close the stream if an audio error is detected, if set false then just log the error
   }
 });
 

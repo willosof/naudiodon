@@ -24,7 +24,8 @@ var ai = new portAudio.AudioIO({
     channelCount: 2,
     sampleFormat: portAudio.SampleFormat16Bit,
     sampleRate: sampleRate,
-    deviceId: 1
+    deviceId: 2,
+    closeOnError: false
   }
 });
 
@@ -33,7 +34,8 @@ var ao = new portAudio.AudioIO({
     channelCount: 2,
     sampleFormat: portAudio.SampleFormat16Bit,
     sampleRate: sampleRate,
-    deviceId: -1
+    deviceId: -1,
+    closeOnError: false
   }
 });
 
