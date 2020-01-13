@@ -27,20 +27,22 @@ class Chunk {
 public:
   Chunk (Napi::Object chunk)
     : mChunk(Memory::makeNew(chunk.As<Napi::Buffer<uint8_t>>().Data(), (uint32_t)chunk.As<Napi::Buffer<uint8_t>>().Length())),
-      mPersistentChunk(new Persist(chunk))
+      mPersistentChunk(new Persist(chunk)), mTs(0.0)
   {}
-  Chunk(std::shared_ptr<Memory> memory)
+  Chunk(std::shared_ptr<Memory> memory, double ts)
     : mChunk(memory),
-      mPersistentChunk(std::unique_ptr<Persist>())
+      mPersistentChunk(std::unique_ptr<Persist>()), mTs(ts)
   {}
   ~Chunk() {}
 
   uint32_t numBytes() const { return mChunk ? mChunk->numBytes() : 0; }
   uint8_t *buf() const { return mChunk ? mChunk->buf() : nullptr; }
+  double ts() const { return mTs; }
 
 private:
   std::shared_ptr<Memory> mChunk;
   std::unique_ptr<Persist> mPersistentChunk;
+  const double mTs;
 };
 
 class Chunks {
@@ -52,6 +54,7 @@ public:
 
   uint8_t *curBuf() const  { return mCurChunk ? mCurChunk->buf() : nullptr; }
   uint32_t curBytes() const  { return mCurChunk ? mCurChunk->numBytes() : 0; }
+  double curTs() const  { return mCurChunk ? mCurChunk->ts() : 0.0; }
 
   uint32_t curOffset() const  { return mOffset; }
   void incOffset(uint32_t off)  { mOffset += off; }

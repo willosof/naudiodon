@@ -49,8 +49,11 @@ public:
 
   void quit();
 
-  bool readPaBuffer(const void *srcBuf, uint32_t frameCount);
+  bool readPaBuffer(const void *srcBuf, uint32_t frameCount, double inTimestamp);
   bool fillPaBuffer(void *dstBuf, uint32_t frameCount);
+
+  double getCurTime() const;
+  double getInLatency() const { return mInLatency; }
 
 private:
   std::shared_ptr<AudioOptions> mInOptions;
@@ -58,10 +61,12 @@ private:
   std::shared_ptr<Chunks> mInChunks;
   std::shared_ptr<Chunks> mOutChunks;
   void *mStream;
+  double mInLatency;
   std::string mErrStr;
   std::mutex m;
 
   uint32_t fillBuffer(uint8_t *buf, uint32_t numBytes,
+                      double &timeStamp,
                       std::shared_ptr<Chunks> chunks,
                       bool &finished, bool isInput);
 

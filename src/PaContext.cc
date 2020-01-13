@@ -24,8 +24,12 @@ int PaCallback(const void *input, void *output, unsigned long frameCount,
                const PaStreamCallbackTimeInfo *timeInfo, 
                PaStreamCallbackFlags statusFlags, void *userData) {
   PaContext *paContext = (PaContext *)userData;
+  double inTimestamp = timeInfo->inputBufferAdcTime > 0.0 ?
+    timeInfo->inputBufferAdcTime :
+    paContext->getCurTime() - paContext->getInLatency(); // approximation for timestamp of first sample
+  double outTimestamp = timeInfo->outputBufferDacTime;
   paContext->checkStatus(statusFlags);
-  int inRetCode = paContext->hasInput() && paContext->readPaBuffer(input, frameCount) ? paContinue : paComplete;
+  int inRetCode = paContext->hasInput() && paContext->readPaBuffer(input, frameCount, inTimestamp) ? paContinue : paComplete;
   int outRetCode = paContext->hasOutput() && paContext->fillPaBuffer(output, frameCount) ? paContinue : paComplete;
   return ((inRetCode == paComplete) && (outRetCode == paComplete)) ? paComplete : paContinue;
 }
@@ -87,6 +91,9 @@ PaContext::PaContext(Napi::Env env, Napi::Object inOptions, Napi::Object outOpti
     std::string err = std::string("Could not open stream: ") + Pa_GetErrorText(errCode);
     throw Napi::Error::New(env, err.c_str());
   }
+
+  const PaStreamInfo *streamInfo = Pa_GetStreamInfo(mStream);
+  mInLatency = streamInfo->inputLatency;
 }
 
 PaContext::~PaContext() {
@@ -115,7 +122,8 @@ void PaContext::stop(eStopFlag flag) {
 std::shared_ptr<Chunk> PaContext::pullInChunk(uint32_t numBytes, bool &finished) {
   std::shared_ptr<Memory> result = Memory::makeNew(numBytes);
   finished = false;
-  uint32_t bytesRead = fillBuffer(result->buf(), numBytes, mInChunks, finished, /*isInput*/true);
+  double timeStamp = 0.0;
+  uint32_t bytesRead = fillBuffer(result->buf(), numBytes, timeStamp, mInChunks, finished, /*isInput*/true);
   if (bytesRead != numBytes) {
     if (0 == bytesRead)
       result = std::shared_ptr<Memory>();
@@ -126,7 +134,7 @@ std::shared_ptr<Chunk> PaContext::pullInChunk(uint32_t numBytes, bool &finished)
     }
   }
 
-  return std::make_shared<Chunk>(result);
+  return std::make_shared<Chunk>(result, timeStamp);
 }
 
 void PaContext::pushOutChunk(std::shared_ptr<Chunk> chunk) {
@@ -170,26 +178,32 @@ void PaContext::quit() {
     mOutChunks->quit();
 }
 
-bool PaContext::readPaBuffer(const void *srcBuf, uint32_t frameCount) {
+bool PaContext::readPaBuffer(const void *srcBuf, uint32_t frameCount, double inTimestamp) {
   uint32_t bytesAvailable = frameCount * mInOptions->channelCount() * mInOptions->sampleBits() / 8;
   std::shared_ptr<Memory> chunk = Memory::makeNew(bytesAvailable);
   memcpy(chunk->buf(), srcBuf, bytesAvailable);
-  mInChunks->push(std::make_shared<Chunk>(chunk));
+  mInChunks->push(std::make_shared<Chunk>(chunk, inTimestamp));
   return true;
 }
 
 bool PaContext::fillPaBuffer(void *dstBuf, uint32_t frameCount) {
   uint32_t bytesRemaining = frameCount * mOutOptions->channelCount() * mOutOptions->sampleBits() / 8;
   bool finished = false;
-  fillBuffer((uint8_t *)dstBuf, bytesRemaining, mOutChunks, finished, /*isInput*/false);
+  double timeStamp = 0.0;
+  fillBuffer((uint8_t *)dstBuf, bytesRemaining, timeStamp, mOutChunks, finished, /*isInput*/false);
   return !finished;
 }
 
+double PaContext::getCurTime() const  { 
+  return Pa_GetStreamTime(mStream);
+}
+
 // private
-uint32_t PaContext::fillBuffer(uint8_t *buf, uint32_t numBytes,
+uint32_t PaContext::fillBuffer(uint8_t *buf, uint32_t numBytes, double &timeStamp,
                                std::shared_ptr<Chunks> chunks,
                                bool &finished, bool isInput) {
   uint32_t bufOff = 0;
+  timeStamp = 0.0;
   while (numBytes) {
     if (!chunks->curBuf() || (chunks->curBuf() && (chunks->curBytes() == chunks->curOffset()))) {
       chunks->waitNext();
@@ -199,6 +213,11 @@ uint32_t PaContext::fillBuffer(uint8_t *buf, uint32_t numBytes,
         finished = true;
         break;
       }
+    }
+    if ((0 == bufOff) && isInput) {
+      // offset the chunk timestamp by the chunk offset
+      double timeOffset = (double)chunks->curOffset() / mInOptions->channelCount() / (mInOptions->sampleBits() / 8) / mInOptions->sampleRate();
+      timeStamp = chunks->curTs() + timeOffset;
     }
 
     uint32_t curBytes = std::min<uint32_t>(numBytes, chunks->curBytes() - chunks->curOffset());

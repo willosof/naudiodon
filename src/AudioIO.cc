@@ -43,13 +43,14 @@ class ReadWorker : public Napi::AsyncWorker {
       Napi::HandleScope scope(Env());
 
       Napi::Value errVal = Env().Null();
-      Napi::Value bufVal = Env().Null();
+      Napi::Object bufVal;
       std::string errStr;
       if (mPaContext->getErrStr(errStr, /*isInput*/true))
         errVal = Napi::String::New(Env(), errStr);
       if (mChunk && mChunk->numBytes()) {
         sOutstandingAllocs.emplace(mChunk->buf(), mChunk);
         bufVal = Napi::Buffer<uint8_t>::New(Env(), mChunk->buf(), mChunk->numBytes(), sAllocFinalizer);
+        bufVal.Set("timestamp", mChunk->ts());
       }
       Napi::Boolean finishedVal = Napi::Boolean::New(Env(), mFinished);
 

@@ -154,6 +154,11 @@ ai.start();
 
 Note that this produces a raw audio file - wav headers would be required to create a wav file. However this basic example produces a file may be read by audio software such as Audacity, using the sample rate and format parameters set when establishing the stream.
 
+There is an additional `"timestamp"` property available on the buffers that are streamed from the input which represents a time value for the first sample in the returned buffer. It can be accessed as follows:
+```javascript
+ai.on('data', buf => console.log(buf.timestamp));
+```
+
 To stop the recording, call `ai.quit()`. For example:
 
 ```javascript
