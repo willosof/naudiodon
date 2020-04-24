@@ -75,6 +75,10 @@ PaContext::PaContext(Napi::Env env, Napi::Object inOptions, Napi::Object outOpti
   #ifdef __arm__
   framesPerBuffer = 256;
   #endif
+  uint32_t inFramesPerBuffer = mInOptions ? mInOptions->framesPerBuffer() : 0;
+  uint32_t outFramesPerBuffer = mOutOptions ? mOutOptions->framesPerBuffer() : 0;
+  if (!((0 == inFramesPerBuffer) && (0 == outFramesPerBuffer)))
+    framesPerBuffer = std::max<uint32_t>(inFramesPerBuffer, outFramesPerBuffer);
 
   errCode = Pa_IsFormatSupported(mInOptions ? &inParams : NULL, mOutOptions ? &outParams : NULL, sampleRate);
   if (errCode != paFormatIsSupported) {
