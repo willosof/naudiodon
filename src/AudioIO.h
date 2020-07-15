@@ -16,7 +16,7 @@
 #ifndef AUDIOIO_H
 #define AUDIOIO_H
 
-#include <napi.h>
+#include "napi.h"
 #include "Memory.h"
 
 namespace streampunk {

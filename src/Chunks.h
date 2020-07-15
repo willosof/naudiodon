@@ -16,7 +16,7 @@
 #ifndef CHUNKS_H
 #define CHUNKS_H
 
-#include <napi.h>
+#include "napi.h"
 #include "Memory.h"
 #include "Persist.h"
 #include "ChunkQueue.h"

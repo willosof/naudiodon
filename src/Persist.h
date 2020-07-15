@@ -16,7 +16,7 @@
 #ifndef PERSIST_H
 #define PERSIST_H
 
-#include <napi.h>
+#include "napi.h"
 
 namespace streampunk {
 

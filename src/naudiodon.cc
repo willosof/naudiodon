@@ -13,7 +13,7 @@
   limitations under the License.
 */
 
-#include <napi.h>
+#include "napi.h"
 #include "GetDevices.h"
 #include "GetHostAPIs.h"
 #include "AudioIO.h"

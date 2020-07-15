@@ -16,7 +16,7 @@
 #ifndef PACONTEXT_H
 #define PACONTEXT_H
 
-#include <napi.h>
+#include "napi.h"
 #include <memory>
 #include <mutex>
 

@@ -16,7 +16,7 @@
 #ifndef GETHOSTAPIS_H
 #define GETHOSTAPIS_H
 
-#include <napi.h>
+#include "napi.h"
 
 namespace streampunk {
 

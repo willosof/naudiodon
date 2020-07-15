@@ -16,7 +16,7 @@
 #ifndef PARAMS_H
 #define PARAMS_H
 
-#include <napi.h>
+#include "napi.h"
 #include <sstream>
 
 using namespace Napi;
