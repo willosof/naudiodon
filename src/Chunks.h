@@ -16,22 +16,27 @@
 #ifndef CHUNKS_H
 #define CHUNKS_H
 
-#include "napi.h"
+#include "node_api.h"
+#include "naudiodonUtil.h"
 #include "Memory.h"
-#include "Persist.h"
 #include "ChunkQueue.h"
 
 namespace streampunk {
 
 class Chunk {
 public:
-  Chunk (Napi::Object chunk)
-    : mChunk(Memory::makeNew(chunk.As<Napi::Buffer<uint8_t>>().Data(), (uint32_t)chunk.As<Napi::Buffer<uint8_t>>().Length())),
-      mPersistentChunk(new Persist(chunk)), mTs(0.0)
-  {}
+  Chunk (napi_env env, napi_value chunk): mTs(0.0) {
+    napi_status status;
+
+    uint8_t* data;
+    size_t dataLen;
+    status = napi_get_buffer_info(env, chunk, (void**) &data, &dataLen);
+    FLOATING_STATUS;
+
+    mChunk = Memory::makeNew(data, dataLen);
+  }
   Chunk(std::shared_ptr<Memory> memory, double ts)
-    : mChunk(memory),
-      mPersistentChunk(std::unique_ptr<Persist>()), mTs(ts)
+    : mChunk(memory), mTs(ts)
   {}
   ~Chunk() {}
 
@@ -41,7 +46,6 @@ public:
 
 private:
   std::shared_ptr<Memory> mChunk;
-  std::unique_ptr<Persist> mPersistentChunk;
   const double mTs;
 };
 

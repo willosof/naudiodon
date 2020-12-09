@@ -13,16 +13,42 @@
   limitations under the License.
 */
 
-#include "napi.h"
+#include "node_api.h"
+#include "naudiodonUtil.h"
 #include "GetDevices.h"
 #include "GetHostAPIs.h"
 #include "AudioIO.h"
 
-Napi::Object InitAll(Napi::Env env, Napi::Object exports) {
-  exports.Set(Napi::String::New(env, "getDevices"), Napi::Function::New(env, streampunk::GetDevices));
-  exports.Set(Napi::String::New(env, "getHostAPIs"), Napi::Function::New(env, streampunk::GetHostAPIs));
-  streampunk::AudioIO::Init(env, exports);
+napi_value Create(napi_env env, napi_callback_info info) {
+  napi_status status;
+  size_t argc = 1;
+  napi_value args[1];
+
+  status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  CHECK_STATUS;
+
+  napi_value instance;
+  status = streampunk::AudioIO::NewInstance(env, args[0], &instance);
+  CHECK_STATUS;
+
+  return instance;
+}
+
+napi_value Init(napi_env env, napi_value exports) {
+  napi_status status;
+
+  status = streampunk::AudioIO::Init(env);
+  CHECK_STATUS;
+
+  napi_property_descriptor desc[] = {
+    DECLARE_NAPI_METHOD("getDevices", streampunk::getDevices),
+    DECLARE_NAPI_METHOD("getHostAPIs", streampunk::getHostAPIs),
+    DECLARE_NAPI_METHOD("create", Create)
+  };
+  status = napi_define_properties(env, exports, 3, desc);
+  CHECK_STATUS;
+
   return exports;
 }
 
-NODE_API_MODULE(NODE_GYP_MODULE_NAME, InitAll);
+NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)

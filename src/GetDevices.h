@@ -16,9 +16,11 @@
 #ifndef GETDEVICES_H
 #define GETDEVICES_H
 
+#include "node_api.h"
+
 namespace streampunk {
 
-Napi::Value GetDevices(const Napi::CallbackInfo& info);
+napi_value getDevices(napi_env env, napi_callback_info info);
 
 } // namespace streampunk
 

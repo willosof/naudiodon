@@ -13,39 +13,50 @@
   limitations under the License.
 */
 
-#include "napi.h"
 #include "GetDevices.h"
+#include "naudiodonUtil.h"
 #include <portaudio.h>
 
 namespace streampunk {
 
-Napi::Value GetDevices(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
+napi_value getDevices(napi_env env, napi_callback_info info) {
+  napi_status status;
+  napi_value result, devInfo;
   uint32_t numDevices;
 
   PaError errCode = Pa_Initialize();
-  if (errCode != paNoError) {
-    std::string err = std::string("Could not initialize PortAudio: ") + Pa_GetErrorText(errCode);
-    throw Napi::Error::New(env, err.c_str());
-  }
+  if (errCode != paNoError)
+    NAPI_THROW_ERROR((std::string("Could not initialize PortAudio: ") + Pa_GetErrorText(errCode)).c_str());
 
   numDevices = Pa_GetDeviceCount();
-  Napi::Array result = Napi::Array::New(env, numDevices);
+  status = napi_create_array(env, &result);
+  CHECK_STATUS;
 
   for (uint32_t i = 0; i < numDevices; ++i) {
     const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(i);
-    Napi::Object v8DeviceInfo = Napi::Object::New(env);
-    v8DeviceInfo.Set(Napi::String::New(env, "id"), Napi::Number::New(env, i));
-    v8DeviceInfo.Set(Napi::String::New(env, "name"), Napi::String::New(env, deviceInfo->name));
-    v8DeviceInfo.Set(Napi::String::New(env, "maxInputChannels"), Napi::Number::New(env, deviceInfo->maxInputChannels));
-    v8DeviceInfo.Set(Napi::String::New(env, "maxOutputChannels"), Napi::Number::New(env, deviceInfo->maxOutputChannels));
-    v8DeviceInfo.Set(Napi::String::New(env, "defaultSampleRate"), Napi::Number::New(env, deviceInfo->defaultSampleRate));
-    v8DeviceInfo.Set(Napi::String::New(env, "defaultLowInputLatency"), Napi::Number::New(env, deviceInfo->defaultLowInputLatency));
-    v8DeviceInfo.Set(Napi::String::New(env, "defaultLowOutputLatency"), Napi::Number::New(env, deviceInfo->defaultLowOutputLatency));
-    v8DeviceInfo.Set(Napi::String::New(env, "defaultHighInputLatency"), Napi::Number::New(env, deviceInfo->defaultHighInputLatency));
-    v8DeviceInfo.Set(Napi::String::New(env, "defaultHighOutputLatency"), Napi::Number::New(env, deviceInfo->defaultHighOutputLatency));
-    v8DeviceInfo.Set(Napi::String::New(env, "hostAPIName"), Napi::String::New(env, Pa_GetHostApiInfo(deviceInfo->hostApi)->name));
-    result.Set(i, v8DeviceInfo);
+    status = napi_create_object(env, &devInfo);
+    CHECK_STATUS;
+    status = naud_set_uint32(env, devInfo, "id", i);
+    CHECK_STATUS;
+    status = naud_set_string_utf8(env, devInfo, "name", deviceInfo->name);
+    CHECK_STATUS;
+    status = naud_set_uint32(env, devInfo, "maxInputChannels", deviceInfo->maxInputChannels);
+    CHECK_STATUS;
+    status = naud_set_uint32(env, devInfo, "maxOutputChannels", deviceInfo->maxOutputChannels);
+    CHECK_STATUS;
+    status = naud_set_uint32(env, devInfo, "defaultSampleRate", deviceInfo->defaultSampleRate);
+    CHECK_STATUS;
+    status = naud_set_uint32(env, devInfo, "defaultLowInputLatency", deviceInfo->defaultLowInputLatency);
+    CHECK_STATUS;
+    status = naud_set_uint32(env, devInfo, "defaultLowOutputLatency", deviceInfo->defaultLowOutputLatency);
+    CHECK_STATUS;
+    status = naud_set_uint32(env, devInfo, "defaultHighInputLatency", deviceInfo->defaultHighInputLatency);
+    CHECK_STATUS;
+    status = naud_set_uint32(env, devInfo, "defaultHighOutputLatency", deviceInfo->defaultHighOutputLatency);
+    CHECK_STATUS;
+    status = naud_set_string_utf8(env, devInfo, "hostAPIName", Pa_GetHostApiInfo(deviceInfo->hostApi)->name);
+    CHECK_STATUS;
+    status = napi_set_element(env, result, i, devInfo);
   }
 
   Pa_Terminate();

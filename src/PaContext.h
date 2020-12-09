@@ -16,7 +16,7 @@
 #ifndef PACONTEXT_H
 #define PACONTEXT_H
 
-#include "napi.h"
+#include "node_api.h"
 #include <memory>
 #include <mutex>
 
@@ -30,7 +30,7 @@ class Chunks;
 
 class PaContext {
 public:
-  PaContext(Napi::Env env, Napi::Object inOptions, Napi::Object outOptions);
+  PaContext(napi_env env, napi_value inOptions, napi_value outOptions);
   ~PaContext();
 
   enum class eStopFlag : uint8_t { WAIT = 0, ABORT = 1 };
@@ -38,7 +38,7 @@ public:
   bool hasInput() { return mInOptions ? true : false; }
   bool hasOutput() { return mOutOptions ? true : false; }
 
-  void start(Napi::Env env);
+  void start(napi_env env);
   void stop(eStopFlag flag);
 
   std::shared_ptr<Chunk> pullInChunk(uint32_t numBytes, bool &finished);
@@ -70,7 +70,7 @@ private:
                       std::shared_ptr<Chunks> chunks,
                       bool &finished, bool isInput);
 
-  void setParams(Napi::Env env, bool isInput, 
+  void setParams(napi_env env, bool isInput, 
                  std::shared_ptr<AudioOptions> options, 
                  PaStreamParameters &params, double &sampleRate);
 };

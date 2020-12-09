@@ -14,204 +14,384 @@
 */
 
 #include "AudioIO.h"
-#include "PaContext.h"
-#include "Chunks.h"
+#include "naudiodonUtil.h"
+#include "Memory.h"
 #include <map>
 
 namespace streampunk {
 
-Napi::FunctionReference AudioIO::constructor;
+napi_ref AudioIO::constructorRef;
 
-static std::map<uint8_t*, std::shared_ptr<Chunk> > sOutstandingAllocs;
-static class AllocFinalizer {
-public:
-  void operator()(Napi::Env env, uint8_t* data) { sOutstandingAllocs.erase(data); }
-} sAllocFinalizer;
+AudioIO::AudioIO(napi_env env, napi_callback_info info): mInstanceRef(nullptr) {
+  napi_status status;
+  bool hasInOptions, hasOutOptions;
 
-class ReadWorker : public Napi::AsyncWorker {
-  public:
-    ReadWorker(std::shared_ptr<PaContext> paContext, uint32_t numBytes, const Napi::Function& callback)
-      : AsyncWorker(callback, "AudioRead"), mPaContext(paContext), mNumBytes(numBytes), mFinished(false)
-    { }
-    ~ReadWorker() {}
+  napi_value undef;
+  status = napi_get_undefined(env, &undef);
+  FLOATING_STATUS;
+  napi_value inOptions = undef;
+  napi_value outOptions = undef;
 
-    void Execute() {
-      mChunk = mPaContext->pullInChunk(mNumBytes, mFinished);
-    }
+  size_t argc = 1;
+  napi_value args[1];
+  status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  if (!(status == napi_ok && argc == 1)) {
+    napi_throw_error(env, nullptr, "AudioIO constructor expects an options object argument");
+    return;
+  }
 
-    void OnOK() {
-      Napi::HandleScope scope(Env());
+  napi_value optionsObj = args[0];
+  napi_valuetype t;
+  status = napi_typeof(env, optionsObj, &t);
+  if (t != napi_object)
+    status = napi_throw_type_error(env, nullptr, "AudioIO parameters must be an object");
 
-      Napi::Value errVal = Env().Null();
-      Napi::Object bufVal;
-      std::string errStr;
-      if (mPaContext->getErrStr(errStr, /*isInput*/true))
-        errVal = Napi::String::New(Env(), errStr);
-      if (mChunk && mChunk->numBytes()) {
-        sOutstandingAllocs.emplace(mChunk->buf(), mChunk);
-        bufVal = Napi::Buffer<uint8_t>::New(Env(), mChunk->buf(), mChunk->numBytes(), sAllocFinalizer);
-        bufVal.Set("timestamp", mChunk->ts());
-      }
-      Napi::Boolean finishedVal = Napi::Boolean::New(Env(), mFinished);
+  status = napi_has_named_property(env, optionsObj, "inOptions", &hasInOptions);
+  FLOATING_STATUS;
+  if (hasInOptions) {
+    status = napi_get_named_property(env, optionsObj, "inOptions", &inOptions);
+    FLOATING_STATUS;
+    status = napi_typeof(env, inOptions, &t);
+    if (t != napi_object)
+      status = napi_throw_type_error(env, nullptr, "AudioIO inOptions must be an object");
+  }
 
-      Callback().Call({errVal, bufVal, finishedVal});
-    }
+  status = napi_has_named_property(env, optionsObj, "outOptions", &hasOutOptions);
+  FLOATING_STATUS;
+  if (hasOutOptions) {
+    status = napi_get_named_property(env, optionsObj, "outOptions", &outOptions);
+    FLOATING_STATUS;
+    status = napi_typeof(env, outOptions, &t);
+    if (t != napi_object)
+      status = napi_throw_type_error(env, nullptr, "AudioIO outOptions must be an object");
+  }
 
-  private:
-    std::shared_ptr<PaContext> mPaContext;
-    uint32_t mNumBytes;
-    std::shared_ptr<Chunk> mChunk;
-    bool mFinished;
-};
+  if (!hasInOptions && !hasOutOptions) {
+    napi_throw_error(env, nullptr, "AudioIO constructor expects an inOptions and/or an outOptions object argument");
+    return;
+  }
 
-class WriteWorker : public Napi::AsyncWorker {
-  public:
-    WriteWorker(std::shared_ptr<PaContext> paContext, std::shared_ptr<Chunk> chunk, const Napi::Function& callback)
-      : AsyncWorker(callback, "AudioWrite"), mPaContext(paContext), mChunk(chunk)
-    { }
-    ~WriteWorker() {}
-
-    void Execute() {
-      mPaContext->pushOutChunk(mChunk);
-    }
-
-    void OnOK() {
-      Napi::HandleScope scope(Env());
-      std::string errStr;
-      if (mPaContext->getErrStr(errStr, /*isInput*/false))
-        Callback().Call({Napi::String::New(Env(), errStr)});
-      else
-        Callback().Call({Env().Null()});
-    }
-
-  private:
-    std::shared_ptr<PaContext> mPaContext;
-    std::shared_ptr<Chunk> mChunk;
-};
-
-class QuitWorker : public Napi::AsyncWorker {
-  public:
-    QuitWorker(std::shared_ptr<PaContext> paContext, PaContext::eStopFlag stopFlag, const Napi::Function& callback)
-      : AsyncWorker(callback, "AudioIOQuit"), mPaContext(paContext), mStopFlag(stopFlag)
-    { }
-    ~QuitWorker() {}
-
-    void Execute() {
-      mPaContext->stop(mStopFlag);
-      mPaContext->quit();
-    }
-
-    void OnOK() {
-      Napi::HandleScope scope(Env());
-      Callback().Call({});
-    }
-
-  private:
-    std::shared_ptr<PaContext> mPaContext;
-    const PaContext::eStopFlag mStopFlag;
-};
-
-AudioIO::AudioIO(const Napi::CallbackInfo& info) 
-  : Napi::ObjectWrap<AudioIO>(info) {
-  Napi::Env env = info.Env();
-
-  if ((info.Length() != 1) || !info[0].IsObject())
-    throw Napi::Error::New(env, "AudioIO constructor expects an options object argument");
-  
-  Napi::Object optionsObj = info[0].As<Napi::Object>();
-  Napi::Object inOptions = Napi::Object();
-  Napi::Object outOptions = Napi::Object();
-  if (optionsObj.Has("inOptions"))
-    inOptions = optionsObj.Get("inOptions").As<Napi::Object>();
-  if (optionsObj.Has("outOptions"))
-    outOptions = optionsObj.Get("outOptions").As<Napi::Object>();
-
-  if (inOptions.IsEmpty() && outOptions.IsEmpty())
-    throw Napi::Error::New(env, "AudioIO constructor expects an inOptions and/or an outOptions object argument");
-
-  mPaContext = std::make_shared<PaContext>(env, inOptions, outOptions);
+  mPaContext = std::make_shared<PaContext>(env, hasInOptions ? inOptions : undef, hasOutOptions ? outOptions: undef);
 }
 AudioIO::~AudioIO() {}
 
-Napi::Value AudioIO::Start(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-  mPaContext->start(env);
-  return env.Undefined();
+napi_status AudioIO::Init(napi_env env) {
+  napi_status status;
+  napi_value constructor;
+
+  napi_property_descriptor properties[] = {
+    DECLARE_NAPI_METHOD("start", sStart),
+    DECLARE_NAPI_METHOD("read", sRead),
+    DECLARE_NAPI_METHOD("write", sWrite),
+    DECLARE_NAPI_METHOD("quit", sQuit)
+  };
+
+  status = napi_define_class(env, "AudioIO", NAPI_AUTO_LENGTH, Construct, nullptr, 4, properties, &constructor);
+  PASS_STATUS;
+
+  status = napi_create_reference(env, constructor, 1, &constructorRef);
+  PASS_STATUS;
+
+  return status;
 }
 
-Napi::Value AudioIO::Read(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-  if (info.Length() != 2)
-    throw Napi::Error::New(env, "AudioIO Read expects 2 arguments");
-  if (!info[0].IsNumber())
-    throw Napi::TypeError::New(env, "AudioIO Read expects a valid advisory size as the first parameter");
-  if (!info[1].IsFunction())
-    throw Napi::TypeError::New(env, "AudioIO Read expects a valid callback as the second parameter");
+napi_value AudioIO::Construct(napi_env env, napi_callback_info info) {
+  napi_status status;
+  napi_value thisVal;
+
+  size_t argc = 2;
+  napi_value args[2];
+  status = napi_get_cb_info(env, info, &argc, args, &thisVal, nullptr);
+  CHECK_STATUS;
+
+  AudioIO* audioIO = new AudioIO(env, info);
+
+  status = napi_wrap(env, thisVal, audioIO, Destruct, nullptr, &audioIO->mInstanceRef);
+  CHECK_STATUS;
+
+  return thisVal;
+}
+
+void AudioIO::Destruct(napi_env env, void* data, void* hint) {
+  AudioIO* audioIO = static_cast<AudioIO*>(data);
+  napi_delete_reference(env, audioIO->mInstanceRef);
+}
+
+napi_status AudioIO::NewInstance(napi_env env, napi_value arg, napi_value* instance) {
+  napi_status status;
+
+  const int argc = 1;
+  napi_value args[1] = { arg };
+
+  napi_value constructor;
+  status = napi_get_reference_value(env, constructorRef, &constructor);
+  PASS_STATUS;
+
+  status = napi_new_instance(env, constructor, argc, args, instance);
+  PASS_STATUS;
+
+  return status;
+}
+
+napi_value AudioIO::Start(napi_env env, napi_callback_info info) {
+  napi_status status;
+  napi_value result;
+
+  mPaContext->start(env);
+
+  status = napi_get_undefined(env, &result);
+  CHECK_STATUS;
+
+  return result;
+}
+
+void readExecute(napi_env env, void* data) {
+  asyncCarrier* c = (asyncCarrier*) data;
+  c->mChunk = c->mPaContext->pullInChunk(c->mNumBytes, c->mFinished);
+}
+
+void readComplete(napi_env env, napi_status asyncStatus, void* data) {
+  asyncCarrier* c = (asyncCarrier*) data;
+  napi_value result, buffer, ts, finInt, finished, err;
+  std::string errStr;
+  void* bufferData;
+
+  if (asyncStatus != napi_ok) {
+    c->status = asyncStatus;
+    c->errorMsg = "Async read failed to complete";
+  }
+  REJECT_STATUS;
+
+  if (c->mPaContext->getErrStr(errStr, /*isInput*/true)) {
+    c->status = napi_create_string_utf8(env, errStr.c_str(), NAPI_AUTO_LENGTH, &err);
+    REJECT_STATUS;
+    c->status = napi_create_object(env, &result);
+    REJECT_STATUS;
+    c->status = napi_set_named_property(env, result, "err", err);
+    REJECT_STATUS;
+  } else {
+    if (c->mChunk && c->mChunk->numBytes()) {
+      c->status = napi_create_buffer_copy(env, c->mChunk->numBytes(), c->mChunk->buf(), &bufferData, &buffer);
+      REJECT_STATUS;
+      c->status = napi_create_uint32(env, c->mChunk->ts(), &ts);
+      REJECT_STATUS;
+      c->status = napi_set_named_property(env, buffer, "timestamp", ts);
+      REJECT_STATUS;
+    }
+    c->status = napi_create_uint32(env, c->mFinished, &finInt);
+    REJECT_STATUS;
+    c->status = napi_coerce_to_bool(env, finInt, &finished);
+    REJECT_STATUS;
+
+    c->status = napi_create_object(env, &result);
+    REJECT_STATUS;
+    c->status = napi_set_named_property(env, result, "buf", buffer);
+    REJECT_STATUS;
+    c->status = napi_set_named_property(env, result, "finished", finished);
+  }
+
+  napi_status status;
+  status = napi_resolve_deferred(env, c->_deferred, result);
+  FLOATING_STATUS;
+
+  tidyCarrier(env, c);
+}
+
+napi_value AudioIO::Read(napi_env env, napi_callback_info info) {
+  napi_value resourceName, promise;
 
   if (!mPaContext->hasInput())
-    throw Napi::Error::New(env, "AudioIO Read - cannot read from a output-only stream");
+    NAPI_THROW_ERROR("AudioIO Read - cannot read from a output-only stream");
 
-  uint32_t numBytes = info[0].As<Napi::Number>().Uint32Value();
-  Napi::Function callback = info[1].As<Napi::Function>();
+  asyncCarrier* c = new asyncCarrier;
+  c->mPaContext = mPaContext;
 
-  ReadWorker *readWork = new ReadWorker(mPaContext, numBytes, callback);
-  readWork->Queue();
-  return env.Undefined();
+  c->status = napi_create_promise(env, &c->_deferred, &promise);
+  REJECT_RETURN;
+
+  size_t argc = 1;
+  napi_value args[1];
+  c->status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  REJECT_RETURN;
+
+  if (argc != 1)
+    NAPI_THROW_ERROR("AudioIO Read expects 1 argument");
+
+  c->status = napi_get_value_uint32(env, args[0], &c->mNumBytes);
+  if ((c->status != napi_number_expected) && (c->status != napi_ok))
+    NAPI_THROW_ERROR("AudioIO Read expects a valid number of bytes as the first parameter");
+
+  c->status = napi_create_string_utf8(env, "Read", NAPI_AUTO_LENGTH, &resourceName);
+  REJECT_RETURN;
+  c->status = napi_create_async_work(env, nullptr, resourceName, readExecute, readComplete,
+    c, &c->_request);
+  REJECT_RETURN;
+  c->status = napi_queue_async_work(env, c->_request);
+  REJECT_RETURN;
+
+  return promise;
 }
 
-Napi::Value AudioIO::Write(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-  if (info.Length() != 2)
-    throw Napi::Error::New(env, "AudioIO Write expects 2 arguments");
-  if (!info[0].IsObject())
-    throw Napi::TypeError::New(env, "AudioIO Write expects a valid chunk buffer as the first parameter");
-  if (!info[1].IsFunction())
-    throw Napi::TypeError::New(env, "AudioIO Write expects a valid callback as the second parameter");
+void writeExecute(napi_env env, void* data) {
+  asyncCarrier* c = (asyncCarrier*) data;
+  c->mPaContext->pushOutChunk(c->mChunk);
+}
+
+void writeComplete(napi_env env, napi_status asyncStatus, void* data) {
+  asyncCarrier* c = (asyncCarrier*) data;
+  napi_value result;
+  std::string errStr;
+
+  if (asyncStatus != napi_ok) {
+    c->status = asyncStatus;
+    c->errorMsg = "Async write failed to complete";
+  }
+  REJECT_STATUS;
+
+  if (c->mPaContext->getErrStr(errStr, /*isInput*/false)) {
+    c->status = napi_create_string_utf8(env, errStr.c_str(), NAPI_AUTO_LENGTH, &result);
+    REJECT_STATUS;
+  } else {
+    c->status = napi_get_undefined(env, &result);
+    REJECT_STATUS;
+  }
+
+  napi_status status;
+  status = napi_resolve_deferred(env, c->_deferred, result);
+  FLOATING_STATUS;
+
+  tidyCarrier(env, c);
+}
+
+napi_value AudioIO::Write(napi_env env, napi_callback_info info) {
+  napi_value resourceName, promise;
+  bool isBuffer;
 
   if (!mPaContext->hasOutput())
-    throw Napi::Error::New(env, "AudioIO Write - cannot write to an input-only stream");
+    NAPI_THROW_ERROR("AudioIO Write - cannot write to an input-only stream");
 
-  Napi::Object chunkObj = info[0].As<Napi::Object>();
-  Napi::Function callback = info[1].As<Napi::Function>();
+  asyncCarrier* c = new asyncCarrier;
+  c->mPaContext = mPaContext;
 
-  WriteWorker *writeWork = new WriteWorker(mPaContext, std::make_shared<Chunk>(chunkObj), callback);
-  writeWork->Queue();
-  return env.Undefined();
+  c->status = napi_create_promise(env, &c->_deferred, &promise);
+  REJECT_RETURN;
+
+  size_t argc = 1;
+  napi_value args[1];
+  c->status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  REJECT_RETURN;
+
+  if (argc != 1)
+    NAPI_THROW_ERROR("AudioIO Write expects 1 argument");
+
+  c->status = napi_is_buffer(env, args[0], &isBuffer);
+  REJECT_RETURN;
+  if (!isBuffer)
+    NAPI_THROW_ERROR("AudioIO Write expects a valid chunk buffer as the first parameter");
+  c->mChunk = std::make_shared<Chunk>(env, args[0]);
+
+  c->status = napi_create_string_utf8(env, "Write", NAPI_AUTO_LENGTH, &resourceName);
+  REJECT_RETURN;
+  c->status = napi_create_async_work(env, nullptr, resourceName, writeExecute, writeComplete,
+    c, &c->_request);
+  REJECT_RETURN;
+  c->status = napi_queue_async_work(env, c->_request);
+  REJECT_RETURN;
+
+  return promise;
 }
 
-Napi::Value AudioIO::Quit(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-  if (info.Length() != 2)
-    throw Napi::Error::New(env, "AudioIO Quit expects 2 arguments");
-  if (!info[0].IsString())
-    throw Napi::TypeError::New(env, "AudioIO Quit expects a valid string as the first parameter");
-  if (!info[1].IsFunction())
-    throw Napi::TypeError::New(env, "AudioIO Quit expects a valid callback as the second parameter");
+void quitExecute(napi_env env, void* data) {
+  asyncCarrier* c = (asyncCarrier*) data;
+  c->mPaContext->stop(c->mStopFlag);
+  c->mPaContext->quit();
+}
 
-  std::string stopFlagStr = info[0].As<Napi::String>().Utf8Value();
+void quitComplete(napi_env env, napi_status asyncStatus, void* data) {
+  asyncCarrier* c = (asyncCarrier*) data;
+  napi_value result;
+
+  c->status = napi_get_undefined(env, &result);
+  REJECT_STATUS;
+
+  napi_status status;
+  status = napi_resolve_deferred(env, c->_deferred, result);
+  FLOATING_STATUS;
+
+  tidyCarrier(env, c);
+}
+
+napi_value AudioIO::Quit(napi_env env, napi_callback_info info) {
+  napi_value resourceName, promise;
+  size_t strLen;
+
+  asyncCarrier* c = new asyncCarrier;
+  c->mPaContext = mPaContext;
+
+  c->status = napi_create_promise(env, &c->_deferred, &promise);
+  REJECT_RETURN;
+
+  size_t argc = 1;
+  napi_value args[1];
+  c->status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  REJECT_RETURN;
+
+  if (argc != 1)
+    NAPI_THROW_ERROR("AudioIO Quit expects 1 argument");
+
+  c->status = napi_get_value_string_utf8(env, args[0], nullptr, 0, &strLen);
+  REJECT_RETURN;
+  char* stopFlag = (char*) malloc(sizeof(char) * (strLen + 1));
+  c->status = napi_get_value_string_utf8(env, args[0], stopFlag, strLen + 1, &strLen);
+  REJECT_RETURN;
+
+  std::string stopFlagStr = stopFlag;
   if ((0 != stopFlagStr.compare("WAIT")) && (0 != stopFlagStr.compare("ABORT")))
-    throw Napi::Error::New(env, "AudioIO Quit expects \'WAIT\' or \'ABORT\' as the first argument");
-  PaContext::eStopFlag stopFlag = (0 == stopFlagStr.compare("WAIT")) ? 
+    NAPI_THROW_ERROR("AudioIO Quit expects \'WAIT\' or \'ABORT\' as the first argument");
+  c->mStopFlag = (0 == stopFlagStr.compare("WAIT")) ? 
     PaContext::eStopFlag::WAIT : PaContext::eStopFlag::ABORT;
 
-  Napi::Function callback = info[1].As<Napi::Function>();
-  QuitWorker *quitWork = new QuitWorker(mPaContext, stopFlag, callback);
-  quitWork->Queue();
-  return env.Undefined();
+  c->status = napi_create_string_utf8(env, "Quit", NAPI_AUTO_LENGTH, &resourceName);
+  REJECT_RETURN;
+  c->status = napi_create_async_work(env, nullptr, resourceName, quitExecute, quitComplete,
+    c, &c->_request);
+  REJECT_RETURN;
+  c->status = napi_queue_async_work(env, c->_request);
+  REJECT_RETURN;
+
+  return promise;
 }
 
-void AudioIO::Init(Napi::Env env, Napi::Object exports) {
-  Napi::Function func = DefineClass(env, "AudioIO", {
-    InstanceMethod("start", &AudioIO::Start),
-    InstanceMethod("read", &AudioIO::Read),
-    InstanceMethod("write", &AudioIO::Write),
-    InstanceMethod("quit", &AudioIO::Quit)
-  });
+AudioIO* AudioIO::GetInstance(napi_env env, napi_callback_info info) {
+  napi_status status;
+  napi_value thisVal;
 
-  constructor = Napi::Persistent(func);
-  constructor.SuppressDestruct();
+  size_t argc = 1;
+  napi_value args[1];
+  status = napi_get_cb_info(env, info, &argc, args, &thisVal, nullptr);
+  CHECK_STATUS;
 
-  exports.Set("AudioIO", func);
+  AudioIO* audioIO = nullptr;
+  status = napi_unwrap(env, thisVal, reinterpret_cast<void**>(&audioIO));
+  CHECK_STATUS;
+
+  return audioIO;
+}
+
+napi_value AudioIO::sStart(napi_env env, napi_callback_info info) {
+  return GetInstance(env, info)->Start(env, info);
+}
+
+napi_value AudioIO::sRead(napi_env env, napi_callback_info info) {
+  return GetInstance(env, info)->Read(env, info);
+}
+
+napi_value AudioIO::sWrite(napi_env env, napi_callback_info info) {
+  return GetInstance(env, info)->Write(env, info);
+}
+
+napi_value AudioIO::sQuit(napi_env env, napi_callback_info info) {
+  return GetInstance(env, info)->Quit(env, info);
 }
 
 } // namespace streampunk

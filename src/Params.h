@@ -16,58 +16,87 @@
 #ifndef PARAMS_H
 #define PARAMS_H
 
-#include "napi.h"
+#include "node_api.h"
+#include "naudiodonUtil.h"
 #include <sstream>
-
-using namespace Napi;
 
 namespace streampunk {
 
-class Params {
-protected:
-  Params() {}
-  virtual ~Params() {}
+bool checkOptions(napi_env env, napi_value options) {
+  napi_status status;
+  napi_valuetype type = napi_undefined;
 
-  Napi::Value getKey(Napi::Env env, Napi::Object tags, const std::string& key) {
-    Napi::Value val = env.Null();
-    Napi::String keyStr = Napi::String::New(env, key);
-    if ((tags).Has(keyStr))
-      val = (tags).Get(keyStr);
-    return val;
+  status = napi_typeof(env, options, &type);
+  return type == napi_undefined ? false : true;
+}
+
+bool unpackBool(napi_env env, napi_value tags, const std::string& key, bool dflt) {
+  napi_status status;
+  bool hasKey;
+  napi_value val;
+  bool result = dflt;
+
+  status = napi_has_named_property(env, tags, key.c_str(), &hasKey);
+  FLOATING_STATUS;
+
+  if (hasKey) {
+    status = napi_get_named_property(env, tags, key.c_str(), &val);
+    FLOATING_STATUS;
+
+    status = napi_get_value_bool(env, val, &result);
+    FLOATING_STATUS;
   }
+  return result;
+}
 
-  bool unpackBool(Napi::Env env, Napi::Object tags, const std::string& key, bool dflt) {
-    bool result = dflt;
-    Napi::Value val = getKey(env, tags, key);
-    if ((env.Null() != val) && val.IsBoolean())
-      result = val.As<Napi::Boolean>().Value();
-    return result;
+uint32_t unpackNum(napi_env env, napi_value tags, const std::string& key, uint32_t dflt) {
+  napi_status status;
+  bool hasKey;
+  napi_value val;
+  uint32_t result = dflt;
+
+  status = napi_has_named_property(env, tags, key.c_str(), &hasKey);
+  FLOATING_STATUS;
+
+  if (hasKey) {
+    status = napi_get_named_property(env, tags, key.c_str(), &val);
+    FLOATING_STATUS;
+
+    status = napi_get_value_uint32(env, val, &result);
+    FLOATING_STATUS;
   }
+  return result;
+} 
 
-  uint32_t unpackNum(Napi::Env env, Napi::Object tags, const std::string& key, uint32_t dflt) {
-    uint32_t result = dflt;
-    Napi::Value val = getKey(env, tags, key);
-    if ((env.Null() != val) && val.IsNumber())
-      result = val.As<Napi::Number>().Uint32Value();
-    return result;
-  } 
+std::string unpackStr(napi_env env, napi_value tags, const std::string& key, std::string dflt) {
+  napi_status status;
+  bool hasKey;
+  napi_value val;
+  std::string result = dflt;
+  size_t strLen;
 
-  std::string unpackStr(Napi::Env env, Napi::Object tags, const std::string& key, std::string dflt) {
-    std::string result = dflt;
-    Napi::Value val = getKey(env, tags, key);
-    if ((env.Null() != val) && val.IsString())
-      result = val.As<Napi::String>().Utf8Value();
-    return result;
-  } 
+  status = napi_has_named_property(env, tags, key.c_str(), &hasKey);
+  FLOATING_STATUS;
 
-private:
-  Params(const Params &);
-};
+  if (hasKey) {
+    status = napi_get_named_property(env, tags, key.c_str(), &val);
+    FLOATING_STATUS;
 
+    status = napi_get_value_string_utf8(env, val, nullptr, 0, &strLen);
+    FLOATING_STATUS;
+    char* resultStr = (char*) malloc(sizeof(char) * (strLen + 1));
+    status = napi_get_value_string_utf8(env, tags, resultStr, strLen + 1, &strLen);
+    FLOATING_STATUS;
 
-class AudioOptions : public Params {
+    result = std::string(resultStr);
+    free(resultStr);
+  }
+  return result;
+} 
+
+class AudioOptions {
 public:
-  AudioOptions(Napi::Env env, Napi::Object tags)
+  AudioOptions(napi_env env, napi_value tags)
     : mDeviceID(unpackNum(env, tags, "deviceId", 0xffffffff)),
       mSampleRate(unpackNum(env, tags, "sampleRate", 44100)),
       mChannelCount(unpackNum(env, tags, "channelCount", 2)),

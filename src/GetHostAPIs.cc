@@ -13,86 +13,113 @@
   limitations under the License.
 */
 
-#include "napi.h"
 #include "GetHostAPIs.h"
+#include "naudiodonUtil.h"
 #include <portaudio.h>
 
 namespace streampunk {
 
-Napi::Object GetHostAPIs(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
+napi_value getHostAPIs(napi_env env, napi_callback_info info) {
+  napi_status status;
+  napi_value result, hostApiArr, hostInfo;
 
   PaError errCode = Pa_Initialize();
-  if (errCode != paNoError) {
-    std::string err = std::string("Could not initialize PortAudio: ") + Pa_GetErrorText(errCode);
-    throw Napi::Error::New(env, err.c_str());
-  }
+  if (errCode != paNoError)
+    NAPI_THROW_ERROR((std::string("Could not initialize PortAudio: ") + Pa_GetErrorText(errCode)).c_str());
 
-  Napi::Object result = Napi::Object::New(env);
+  status = napi_create_object(env, &result);
+  CHECK_STATUS;
 
   uint32_t numHostApis = Pa_GetHostApiCount();
-  Napi::Array hostApiArr = Napi::Array::New(env, numHostApis);
+  status = napi_create_array_with_length(env, numHostApis, &hostApiArr);
+  CHECK_STATUS;
 
-  uint32_t defaultHostApi = Pa_GetDefaultHostApi();
-  result.Set(Napi::String::New(env, "defaultHostAPI"), Napi::Number::New(env, defaultHostApi));
+  int32_t defaultHostApi = Pa_GetDefaultHostApi();
+  status = naud_set_int32(env, result, "defaultHostAPI", defaultHostApi);
 
   for (uint32_t i = 0; i < numHostApis; ++i) {
     const PaHostApiInfo *hostApi = Pa_GetHostApiInfo(i);
-    Napi::Object hostInfo = Napi::Object::New(env);
-    hostInfo.Set(Napi::String::New(env, "id"), Napi::Number::New(env, i));
-    hostInfo.Set(Napi::String::New(env, "name"), Napi::String::New(env, hostApi->name));
+    status = napi_create_object(env, &hostInfo);
+    CHECK_STATUS;
+    status = naud_set_uint32(env, hostInfo, "id", i);
+    CHECK_STATUS;
+    status = naud_set_string_utf8(env, hostInfo, "name", hostApi->name);
+    CHECK_STATUS;
+
     switch(hostApi->type) {
       case paInDevelopment:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "InDevelopment"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "InDevelopment");
+        CHECK_STATUS;
         break;
       case paDirectSound:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "DirectSound"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "DirectSound");
+        CHECK_STATUS;
         break;
       case paMME:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "MME"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "MME");
+        CHECK_STATUS;
         break;
       case paASIO:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "ASIO"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "ASIO");
+        CHECK_STATUS;
         break;
       case paSoundManager:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "SoundManager"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "SoundManager");
+        CHECK_STATUS;
         break;
       case paCoreAudio:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "CoreAudio"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "CoreAudio");
+        CHECK_STATUS;
         break;
       case paOSS:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "OSS"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "OSS");
+        CHECK_STATUS;
         break;
       case paALSA:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "ALSA"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "ALSA");
+        CHECK_STATUS;
         break;
       case paAL:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "AL"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "AL");
+        CHECK_STATUS;
         break;
       case paBeOS:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "BeOS"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "BeOS");
+        CHECK_STATUS;
         break;
       case paWDMKS:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "WDMKS"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "WDMKS");
+        CHECK_STATUS;
         break;
       case paJACK:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "JACK"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "JACK");
+        CHECK_STATUS;
         break;
       case paWASAPI:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "WASAPI"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "WASAPI");
+        CHECK_STATUS;
         break;
       case paAudioScienceHPI:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "AudioScienceHPI"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "AudioScienceHPI");
+        CHECK_STATUS;
         break;
       default:
-        hostInfo.Set(Napi::String::New(env, "type"), Napi::String::New(env, "Unknown"));
+        status = naud_set_string_utf8(env, hostInfo, "type", "Unknown");
+        CHECK_STATUS;
+        break;
     }
-    hostInfo.Set(Napi::String::New(env, "deviceCount"), Napi::Number::New(env, hostApi->deviceCount));
-    hostInfo.Set(Napi::String::New(env, "defaultInput"), Napi::Number::New(env, hostApi->defaultInputDevice));
-    hostInfo.Set(Napi::String::New(env, "defaultOutput"), Napi::Number::New(env, hostApi->defaultOutputDevice));
-    hostApiArr.Set(i, hostInfo);
+
+    status = naud_set_uint32(env, hostInfo, "deviceCount", hostApi->deviceCount);
+    CHECK_STATUS;
+    status = naud_set_uint32(env, hostInfo, "defaultInput", hostApi->defaultInputDevice);
+    CHECK_STATUS;
+    status = naud_set_uint32(env, hostInfo, "defaultOutput", hostApi->defaultOutputDevice);
+    CHECK_STATUS;
+    status = napi_set_element(env, hostApiArr, i, hostInfo);
+    CHECK_STATUS;
   }
-  result.Set(Napi::String::New(env, "HostAPIs"), hostApiArr);
+  status = napi_set_named_property(env, result, "HostAPIs", hostApiArr);
+  CHECK_STATUS;
 
   Pa_Terminate();
   return result;

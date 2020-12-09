@@ -3,6 +3,7 @@
     {
       "target_name": "naudiodon",
       "sources": [
+        "src/naudiodonUtil.cc",
         "src/naudiodon.cc",
         "src/GetDevices.cc",
         "src/GetHostAPIs.cc",
@@ -10,12 +11,8 @@
       	"src/PaContext.cc"
       ],
       "include_dirs": [
-        "<!@(node -p \"require('node-addon-api').include\")",
         "portaudio/include"
       ],
-      "dependencies": [
-        "<!(node -p \"require('node-addon-api').gyp\")"
-      ],  
       "conditions" : [
         [
           'OS=="mac"', {

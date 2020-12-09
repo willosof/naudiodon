@@ -16,11 +16,11 @@
 #ifndef GETHOSTAPIS_H
 #define GETHOSTAPIS_H
 
-#include "napi.h"
+#include "node_api.h"
 
 namespace streampunk {
 
-Napi::Object GetHostAPIs(const Napi::CallbackInfo& info);
+napi_value getHostAPIs(napi_env env, napi_callback_info info);
 
 } // namespace streampunk
 

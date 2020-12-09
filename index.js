@@ -29,23 +29,23 @@ exports.getDevices = portAudioBindings.getDevices;
 exports.getHostAPIs = portAudioBindings.getHostAPIs;
 
 function AudioIO(options) {
-  const audioIOAdon = new portAudioBindings.AudioIO(options);
+  const audioIOAdon = portAudioBindings.create(options);
   let ioStream;
 
-  const doRead = size => {
-    audioIOAdon.read(size, (err, buf, finished) => {
-      if (err)
-        ioStream.destroy(err);
-      else {
-        ioStream.push(buf);
-        if (finished)
-          ioStream.push(null);
-      }
-    });
+  const doRead = async size => {
+    const result = await audioIOAdon.read(size);
+    if (result.err)
+      ioStream.destroy(result.err);
+    else {
+      ioStream.push(result.buf);
+      if (result.finished)
+        ioStream.push(null);
+    };
   };
 
-  const doWrite = (chunk, encoding, cb) => {
-    audioIOAdon.write(chunk, err => cb(err));
+  const doWrite = async (chunk, encoding, cb) => {
+    const err = await audioIOAdon.write(chunk);
+    cb(err);
   }
 
   const readable = 'inOptions' in options;
@@ -77,11 +77,10 @@ function AudioIO(options) {
 
   ioStream.start = () => audioIOAdon.start();
 
-  ioStream.quit = cb => {
-    audioIOAdon.quit('WAIT', () => {
-      if (typeof cb === 'function')
-        cb();
-    });
+  ioStream.quit = async cb => {
+    await audioIOAdon.quit('WAIT')
+    if (typeof cb === 'function')
+      cb();
   }
 
   ioStream.abort = cb => {

@@ -16,28 +16,49 @@
 #ifndef AUDIOIO_H
 #define AUDIOIO_H
 
-#include "napi.h"
+#include "node_api.h"
 #include "Memory.h"
+#include "Chunks.h"
+#include "PaContext.h"
 
 namespace streampunk {
 
 class PaContext;
 
-class AudioIO : public Napi::ObjectWrap<AudioIO> {
+struct asyncCarrier : carrier {
+  ~asyncCarrier() {}
+  std::shared_ptr<PaContext> mPaContext = 0;
+  std::shared_ptr<Chunk> mChunk = 0;
+  uint32_t mNumBytes = 0;
+  bool mFinished = false;
+  PaContext::eStopFlag mStopFlag = PaContext::eStopFlag(0);
+};
+
+class AudioIO {
 public:
-  static void Init(Napi::Env env, Napi::Object exports);
-  AudioIO(const Napi::CallbackInfo& info);
+  static napi_ref constructorRef;
+  static napi_status Init(napi_env env);
+  static napi_value Construct(napi_env env, napi_callback_info info);
+  static void Destruct(napi_env env, void* data, void* hint);
+  static napi_status NewInstance(napi_env env, napi_value arg, napi_value* instance);
+
+  AudioIO(napi_env env, napi_callback_info info);
   ~AudioIO();
 
 private:
-  static Napi::FunctionReference constructor;
-
-  Napi::Value Start(const Napi::CallbackInfo& info);
-  Napi::Value Read(const Napi::CallbackInfo& info);
-  Napi::Value Write(const Napi::CallbackInfo& info);
-  Napi::Value Quit(const Napi::CallbackInfo& info);
-
   std::shared_ptr<PaContext> mPaContext;
+  napi_ref mInstanceRef;
+
+  napi_value Start(napi_env env, napi_callback_info info);
+  napi_value Read(napi_env env, napi_callback_info info);
+  napi_value Write(napi_env env, napi_callback_info info);
+  napi_value Quit(napi_env env, napi_callback_info info);
+
+  static AudioIO* GetInstance(napi_env env, napi_callback_info info);
+  static napi_value sStart(napi_env env, napi_callback_info info);
+  static napi_value sRead(napi_env env, napi_callback_info info);
+  static napi_value sWrite(napi_env env, napi_callback_info info);
+  static napi_value sQuit(napi_env env, napi_callback_info info);
 };
 
 } // namespace streampunk

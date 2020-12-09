@@ -29,14 +29,15 @@ int PaCallback(const void *input, void *output, unsigned long frameCount,
     paContext->getCurTime() - paContext->getInLatency(); // approximation for timestamp of first sample
   double outTimestamp = timeInfo->outputBufferDacTime;
   paContext->checkStatus(statusFlags);
+  // printf("PaCallback output %p, frameCount %d\n", output, frameCount);
   int inRetCode = paContext->hasInput() && paContext->readPaBuffer(input, frameCount, inTimestamp) ? paContinue : paComplete;
   int outRetCode = paContext->hasOutput() && paContext->fillPaBuffer(output, frameCount) ? paContinue : paComplete;
   return ((inRetCode == paComplete) && (outRetCode == paComplete)) ? paComplete : paContinue;
 }
 
-PaContext::PaContext(Napi::Env env, Napi::Object inOptions, Napi::Object outOptions)
-  : mInOptions(inOptions.IsEmpty() ? std::shared_ptr<AudioOptions>() : std::make_shared<AudioOptions>(env, inOptions)), 
-    mOutOptions(outOptions.IsEmpty() ? std::shared_ptr<AudioOptions>() : std::make_shared<AudioOptions>(env, outOptions)),
+PaContext::PaContext(napi_env env, napi_value inOptions, napi_value outOptions)
+  : mInOptions(checkOptions(env, inOptions) ? std::make_shared<AudioOptions>(env, inOptions) : std::shared_ptr<AudioOptions>()), 
+    mOutOptions(checkOptions(env, outOptions) ? std::make_shared<AudioOptions>(env, outOptions) : std::shared_ptr<AudioOptions>()),
     mInChunks(new Chunks(mInOptions ? mInOptions->maxQueue() : 0)),
     mOutChunks(new Chunks(mOutOptions ? mOutOptions->maxQueue() : 0)),
     mStream(nullptr) {
@@ -44,15 +45,20 @@ PaContext::PaContext(Napi::Env env, Napi::Object inOptions, Napi::Object outOpti
   PaError errCode = Pa_Initialize();
   if (errCode != paNoError) {
     std::string err = std::string("Could not initialize PortAudio: ") + Pa_GetErrorText(errCode);
-    throw Napi::Error::New(env, err.c_str());
+    napi_throw_error(env, nullptr, err.c_str());
+    return;
   }
 
-  if (!mInOptions && !mOutOptions)
-    throw Napi::Error::New(env, "Input and/or Output options must be specified");
+  if (!mInOptions && !mOutOptions) {
+    napi_throw_error(env, nullptr, "Input and/or Output options must be specified");
+    return;
+  }
 
   if (mInOptions && mOutOptions &&
-      (mInOptions->sampleRate() != mOutOptions->sampleRate()))
-    throw Napi::Error::New(env, "Input and Output sample rates must match");
+      (mInOptions->sampleRate() != mOutOptions->sampleRate())) {
+    napi_throw_error(env, nullptr, "Input and Output sample rates must match");
+    return;
+  }    
 
   printf("%s\n", Pa_GetVersionInfo()->versionText);
   if (mInOptions)
@@ -83,7 +89,8 @@ PaContext::PaContext(Napi::Env env, Napi::Object inOptions, Napi::Object outOpti
   errCode = Pa_IsFormatSupported(mInOptions ? &inParams : NULL, mOutOptions ? &outParams : NULL, sampleRate);
   if (errCode != paFormatIsSupported) {
     std::string err = std::string("Format not supported: ") + Pa_GetErrorText(errCode);
-    throw Napi::Error::New(env, err.c_str());
+    napi_throw_error(env, nullptr, err.c_str());
+    return;
   }
 
   errCode = Pa_OpenStream(&mStream,
@@ -93,7 +100,8 @@ PaContext::PaContext(Napi::Env env, Napi::Object inOptions, Napi::Object outOpti
                           paNoFlag, PaCallback, this);
   if (errCode != paNoError) {
     std::string err = std::string("Could not open stream: ") + Pa_GetErrorText(errCode);
-    throw Napi::Error::New(env, err.c_str());
+    napi_throw_error(env, nullptr, err.c_str());
+    return;
   }
 
   const PaStreamInfo *streamInfo = Pa_GetStreamInfo(mStream);
@@ -106,11 +114,12 @@ PaContext::~PaContext() {
   Pa_Terminate();
 }
 
-void PaContext::start(Napi::Env env) {
+void PaContext::start(napi_env env) {
   PaError errCode = Pa_StartStream(mStream);
   if (errCode != paNoError) {
     std::string err = std::string("Could not start stream: ") + Pa_GetErrorText(errCode);
-    throw Napi::Error::New(env, err.c_str());
+    napi_throw_error(env, nullptr, err.c_str());
+    return;
   }
 }
 
@@ -166,7 +175,7 @@ void PaContext::checkStatus(uint32_t statusFlags) {
 
 bool PaContext::getErrStr(std::string& errStr, bool isInput) {
   std::lock_guard<std::mutex> lk(m);
-  std::shared_ptr<streampunk::AudioOptions> options = isInput ? mInOptions : mOutOptions;
+  std::shared_ptr<AudioOptions> options = isInput ? mInOptions : mOutOptions;
   if (options->closeOnError()) // propagate the error back to the stream handler
     errStr = mErrStr;
   else if (mErrStr.length())
@@ -236,7 +245,7 @@ uint32_t PaContext::fillBuffer(uint8_t *buf, uint32_t numBytes, double &timeStam
   return bufOff;
 }
 
-void PaContext::setParams(Napi::Env env, bool isInput, 
+void PaContext::setParams(napi_env env, bool isInput, 
                           std::shared_ptr<AudioOptions> options, 
                           PaStreamParameters &params, double &sampleRate) {
   int32_t deviceID = (int32_t)options->deviceID();
@@ -244,15 +253,19 @@ void PaContext::setParams(Napi::Env env, bool isInput,
     params.device = (PaDeviceIndex)deviceID;
   else
     params.device = isInput ? Pa_GetDefaultInputDevice() : Pa_GetDefaultOutputDevice();
-  if (params.device == paNoDevice)
-    throw Napi::Error::New(env, "No default device");
+  if (params.device == paNoDevice) {
+    napi_throw_error(env, nullptr, "No default device");
+    return;
+  }  
 
   printf("%s device name is %s\n", isInput?"Input":"Output", Pa_GetDeviceInfo(params.device)->name);
 
   params.channelCount = options->channelCount();
   int maxChannels = isInput ? Pa_GetDeviceInfo(params.device)->maxInputChannels : Pa_GetDeviceInfo(params.device)->maxOutputChannels;
-  if (params.channelCount > maxChannels)
-    throw Napi::Error::New(env, "Channel count exceeds maximum number of channels for device");
+  if (params.channelCount > maxChannels) {
+    napi_throw_error(env, nullptr, "Channel count exceeds maximum number of channels for device");
+    return;
+  }
 
   uint32_t sampleFormat = options->sampleFormat();
   switch(sampleFormat) {
@@ -261,7 +274,10 @@ void PaContext::setParams(Napi::Env env, bool isInput,
   case 16: params.sampleFormat = paInt16; break;
   case 24: params.sampleFormat = paInt24; break;
   case 32: params.sampleFormat = paInt32; break;
-  default: throw Napi::Error::New(env, "Invalid sampleFormat");
+  default: {
+      napi_throw_error(env, nullptr, "Invalid sampleFormat");
+      return;
+    }
   }
 
   params.suggestedLatency = isInput ? Pa_GetDeviceInfo(params.device)->defaultLowInputLatency : 
