@@ -162,10 +162,10 @@ void readComplete(napi_env env, napi_status asyncStatus, void* data) {
   }
   REJECT_STATUS;
 
+  c->status = napi_create_object(env, &result);
+  REJECT_STATUS;
   if (c->mPaContext->getErrStr(errStr, /*isInput*/true)) {
     c->status = napi_create_string_utf8(env, errStr.c_str(), NAPI_AUTO_LENGTH, &err);
-    REJECT_STATUS;
-    c->status = napi_create_object(env, &result);
     REJECT_STATUS;
     c->status = napi_set_named_property(env, result, "err", err);
     REJECT_STATUS;
@@ -177,17 +177,18 @@ void readComplete(napi_env env, napi_status asyncStatus, void* data) {
       REJECT_STATUS;
       c->status = napi_set_named_property(env, buffer, "timestamp", ts);
       REJECT_STATUS;
+    } else {
+      c->status = napi_get_null(env, &buffer);
+      REJECT_STATUS;
     }
+    c->status = napi_set_named_property(env, result, "buf", buffer);
+    REJECT_STATUS;
     c->status = napi_create_uint32(env, c->mFinished, &finInt);
     REJECT_STATUS;
     c->status = napi_coerce_to_bool(env, finInt, &finished);
     REJECT_STATUS;
-
-    c->status = napi_create_object(env, &result);
-    REJECT_STATUS;
-    c->status = napi_set_named_property(env, result, "buf", buffer);
-    REJECT_STATUS;
     c->status = napi_set_named_property(env, result, "finished", finished);
+    REJECT_STATUS;
   }
 
   napi_status status;

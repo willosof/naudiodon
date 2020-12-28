@@ -78,7 +78,7 @@ function AudioIO(options) {
   ioStream.start = () => audioIOAdon.start();
 
   ioStream.quit = async cb => {
-    await audioIOAdon.quit('WAIT')
+    await audioIOAdon.quit('WAIT');
     if (typeof cb === 'function')
       cb();
   }
@@ -90,8 +90,14 @@ function AudioIO(options) {
     });
   }
 
-  ioStream.on('close', () => ioStream.quit());
-  ioStream.on('finish', () => ioStream.quit());
+  ioStream.on('close', async () => {
+    await ioStream.quit()
+    ioStream.emit('closed');
+  });
+  ioStream.on('finish', async () => {
+    await ioStream.quit()
+    ioStream.emit('finished');
+  });
 
   ioStream.on('error', err => console.error('AudioIO:', err));
 
