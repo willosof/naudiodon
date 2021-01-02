@@ -106,8 +106,14 @@ napi_value AudioIO::Construct(napi_env env, napi_callback_info info) {
 
   AudioIO* audioIO = new AudioIO(env, info);
 
-  status = napi_wrap(env, thisVal, audioIO, Destruct, nullptr, &audioIO->mInstanceRef);
+  bool pendingException = false;
+  status = napi_is_exception_pending(env, &pendingException);
   CHECK_STATUS;
+
+  if (!pendingException) {
+    status = napi_wrap(env, thisVal, audioIO, Destruct, nullptr, &audioIO->mInstanceRef);
+    CHECK_STATUS;
+  }
 
   return thisVal;
 }
