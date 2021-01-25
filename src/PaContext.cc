@@ -108,12 +108,6 @@ PaContext::PaContext(napi_env env, napi_value inOptions, napi_value outOptions)
   mInLatency = streamInfo->inputLatency;
 }
 
-PaContext::~PaContext() {
-  Pa_AbortStream(mStream);
-  Pa_CloseStream(mStream);
-  Pa_Terminate();
-}
-
 void PaContext::start(napi_env env) {
   PaError errCode = Pa_StartStream(mStream);
   if (errCode != paNoError) {

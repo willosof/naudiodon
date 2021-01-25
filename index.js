@@ -37,7 +37,7 @@ function AudioIO(options) {
     if (result.err)
       ioStream.destroy(result.err);
     else {
-      ioStream.push(result.buf);
+      ioStream.push(result.buf.length ? result.buf : null);
       if (result.finished)
         ioStream.push(null);
     };
@@ -91,7 +91,6 @@ function AudioIO(options) {
   }
 
   ioStream.on('close', async () => {
-    await ioStream.quit()
     ioStream.emit('closed');
   });
   ioStream.on('finish', async () => {

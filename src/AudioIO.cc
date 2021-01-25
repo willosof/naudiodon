@@ -73,7 +73,6 @@ AudioIO::AudioIO(napi_env env, napi_callback_info info): mInstanceRef(nullptr) {
 
   mPaContext = std::make_shared<PaContext>(env, hasInOptions ? inOptions : undef, hasOutOptions ? outOptions: undef);
 }
-AudioIO::~AudioIO() {}
 
 napi_status AudioIO::Init(napi_env env) {
   napi_status status;
@@ -119,8 +118,11 @@ napi_value AudioIO::Construct(napi_env env, napi_callback_info info) {
 }
 
 void AudioIO::Destruct(napi_env env, void* data, void* hint) {
+  napi_status status;
   AudioIO* audioIO = static_cast<AudioIO*>(data);
-  napi_delete_reference(env, audioIO->mInstanceRef);
+  status = napi_delete_reference(env, audioIO->mInstanceRef);
+  FLOATING_STATUS;
+  delete audioIO;
 }
 
 napi_status AudioIO::NewInstance(napi_env env, napi_value arg, napi_value* instance) {
@@ -184,7 +186,7 @@ void readComplete(napi_env env, napi_status asyncStatus, void* data) {
       c->status = napi_set_named_property(env, buffer, "timestamp", ts);
       REJECT_STATUS;
     } else {
-      c->status = napi_get_null(env, &buffer);
+      c->status = napi_create_buffer_copy(env, 0, nullptr, &bufferData, &buffer);
       REJECT_STATUS;
     }
     c->status = napi_set_named_property(env, result, "buf", buffer);
