@@ -181,8 +181,10 @@ bool PaContext::getErrStr(std::string& errStr, bool isInput) {
 void PaContext::quit() {
   if (mInOptions)
     mInChunks->quit();
-  if (mOutOptions)
+  if (mOutOptions) {
     mOutChunks->quit();
+    mOutChunks->waitDone();
+  }
 }
 
 bool PaContext::readPaBuffer(const void *srcBuf, uint32_t frameCount, double inTimestamp) {

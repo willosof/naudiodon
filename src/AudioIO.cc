@@ -312,8 +312,8 @@ napi_value AudioIO::Write(napi_env env, napi_callback_info info) {
 
 void quitExecute(napi_env env, void* data) {
   asyncCarrier* c = (asyncCarrier*) data;
-  c->mPaContext->stop(c->mStopFlag);
   c->mPaContext->quit();
+  c->mPaContext->stop(c->mStopFlag);
 }
 
 void quitComplete(napi_env env, napi_status asyncStatus, void* data) {

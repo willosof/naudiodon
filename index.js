@@ -37,9 +37,10 @@ function AudioIO(options) {
     if (result.err)
       ioStream.destroy(result.err);
     else {
-      ioStream.push(result.buf.length ? result.buf : null);
       if (result.finished)
         ioStream.push(null);
+      else
+        ioStream.push(result.buf);
     };
   };
 
