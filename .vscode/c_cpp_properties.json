@@ -5,7 +5,7 @@
             "includePath": [
                 "${workspaceRoot}",
                 "${workspaceRoot}/portaudio/include",
-                "/usr/local/include/node",
+                "/usr/local/include/node"
             ],
             "defines": [],
             "intelliSenseMode": "clang-x64",
