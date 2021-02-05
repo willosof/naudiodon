@@ -17,6 +17,7 @@
 #include "Params.h"
 #include "Chunks.h"
 #include <portaudio.h>
+#include <thread>
 
 namespace streampunk {
 
@@ -185,6 +186,8 @@ void PaContext::quit() {
     mOutChunks->quit();
     mOutChunks->waitDone();
   }
+  // wait for next PaCallback to run
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
 }
 
 bool PaContext::readPaBuffer(const void *srcBuf, uint32_t frameCount, double inTimestamp) {
